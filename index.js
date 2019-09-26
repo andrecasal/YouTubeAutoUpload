@@ -11,14 +11,13 @@ logger.config({
 });
 const path = require('path');
 const prettyBytes = require('pretty-bytes');
-var moment = require('moment');
+var moment = require('moment-timezone');
 
 // Constants
 const CONFIG_PATH = 'config.json';
 
 // Global variables
 let error = null;
-let quotaError = null;
 let checkedTokens = false;
 let tokenExpired = null;
 let config = {};
@@ -73,8 +72,8 @@ const updateConsole = setInterval(function() {
 
 	// Uploaded videos
 	for (let index = 0; index < uploadedVideos.length; index++) {
-		const video = uploadedVideos[index];
-		logger.success(`${video} uploaded successfully \u2713`);
+		const pathAfterRoot = uploadedVideos[index].replace(root, '');
+		logger.success(`[Uploaded] ${pathAfterRoot} \u2713`);
 	}
 
 	// Active upload
@@ -87,39 +86,37 @@ const updateConsole = setInterval(function() {
 		const uploadPercentage = ((bytesDispatched / fileSize) * 100).toFixed(2);
 		const fileBasename = path.basename(activeUploadPath);
 		// Show stats
-		logger.warning(`Uploading ${fileBasename}	${prettyBytes(bytesDispatched)}/${prettyBytes(fileSize)}(${uploadPercentage}%)@${prettyBytes(uploadSpeed)}/s`);
+		logger.warn(`[Uploading ${prettyBytes(bytesDispatched)}/${prettyBytes(fileSize)} (${uploadPercentage}%) @ ${prettyBytes(uploadSpeed)}/s] ${fileBasename}`);
 	}
 
 	if (suspendedUpload) {
-		logger.error(`${suspendedUpload} failed \u2717`);
+		const pathAfterRoot = suspendedUpload.replace(root, '');
+		logger.error(`${pathAfterRoot} failed \u2717`);
 	}
 
 	// Waiting queue
 	for (let index = 0; index < waitingQueue.length; index++) {
 		const pathAfterRoot = waitingQueue[index].replace(root, '');
-		logger.info(`${pathAfterRoot} is in the queue.`);
+
+		logger.info(`[Queued] ${pathAfterRoot}`);
 	}
 
 	if (suspendedUpload) {
-		let timeLeft = null;
-		let now = moment();
-		let losAngeles = now.clone().tz('America/Los_Angeles');
-		let deadline = losAngeles
-			.clone()
+		const timeInLA = moment().tz('America/Los_Angeles');
+		const quotaResetTime = moment()
+			.add(1, 'days')
 			.hour(0)
 			.minute(0)
-			.second(0);
-		if (now.isAfter(deadline)) {
-			let tomorrow = moment(new Date())
-				.add(1, 'days')
-				.hour(0)
-				.minute(0)
-				.second(0);
-			timeLeft = tomorrow.diff(now, 'hours') + ' h ' + (tomorrow.diff(now, 'minutes') % 60) + ' min';
-		} else {
-			timeLeft = deadline.diff(now, 'hours') + ' h ' + (deadline.diff(now, 'minutes') % 60) + ' min';
+			.second(0); // Quota resets at midnight Pacific time
+		const hoursLeft = quotaResetTime.diff(timeInLA, 'hours');
+		const minutesLeft = quotaResetTime.diff(timeInLA, 'minutes') % 60;
+		const secondsLeft = (quotaResetTime.diff(timeInLA, 'seconds') % 60) % 60;
+		const timeLeft = `${hoursLeft} h ${minutesLeft} min ${secondsLeft} s`;
+		logger.warn(`\nYou've reached your quota limit. Waiting until midnight Pacific Time to continue (${timeLeft} left).`);
+		// Check if we've passed the quota reset time to continue processing videos
+		if (moment().isAfter(quotaResetTime)) {
+			processNextVideo();
 		}
-		logger.warning(`\nYou've reached your quota limit. Waiting until midnight Pacific Time to continue (${timeLeft} left).`);
 	}
 }, 1000);
 
@@ -235,6 +232,9 @@ function monitorRootFolder() {
 }
 
 function processNextVideo() {
+	// Check if uploads are suspended
+	if (suspendedUpload) return;
+
 	// Check if there's anything in the waiting queue
 	if (waitingQueue.length == 0) return;
 
@@ -275,12 +275,13 @@ function processNextVideo() {
 			},
 		},
 		(err, data) => {
+			activeUpload = null;
 			if (err) {
-				quotaError = err;
 				suspendedUpload = activeUploadPath;
 				return;
 			}
 			// Add this video to the uploadedVideos list
+			const {rootFolder: root} = config;
 			const pathAfterRoot = activeUploadPath.replace(root, '');
 			uploadedVideos.push(pathAfterRoot);
 			// Process next video
