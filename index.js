@@ -16,6 +16,8 @@ var moment = require('moment-timezone');
 // Constants
 const CONFIG_PATH = 'config.json';
 
+// This is a diff
+
 // Global variables
 let error = null;
 let checkedTokens = false;
