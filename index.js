@@ -40,7 +40,7 @@ let uploadedVideos = [];
 let nDots = 0;
 
 // Console feedback
-const updateConsole = setInterval(function() {
+const updateConsole = setInterval(function () {
 	clear();
 	if (error) {
 		logger.error(error);
@@ -69,12 +69,12 @@ const updateConsole = setInterval(function() {
 
 	// Check if we're monitoring the root folder
 	if (!monitoringRootFolder) return;
-	const {rootFolder: root} = config;
+	const { rootFolder: root } = config;
 	logger.info(`Listening to the ${root} folder${dots}\n`);
 
 	// Uploaded videos
 	for (let index = 0; index < uploadedVideos.length; index++) {
-		const pathAfterRoot = uploadedVideos[index].replace(root, '');
+		const pathAfterRoot = uploadedVideos[ index ].replace(root, '');
 		logger.success(`[Uploaded] ${pathAfterRoot} \u2713`);
 	}
 
@@ -98,7 +98,7 @@ const updateConsole = setInterval(function() {
 
 	// Waiting queue
 	for (let index = 0; index < waitingQueue.length; index++) {
-		const pathAfterRoot = waitingQueue[index].replace(root, '');
+		const pathAfterRoot = waitingQueue[ index ].replace(root, '');
 
 		logger.info(`[Queued] ${pathAfterRoot}`);
 	}
@@ -135,16 +135,16 @@ function getCredentials(configuration) {
 	// Save to global variable
 	config = configuration;
 	// Get credentials
-	const {credentials} = config;
-	const {web} = credentials;
-	const {client_secret: clientSecret, client_id: clientId, redirect_uris: redirectUrls} = web;
-	const redirectUrl = redirectUrls[0];
+	const { credentials } = config;
+	const { web } = credentials;
+	const { client_secret: clientSecret, client_id: clientId, redirect_uris: redirectUrls } = web;
+	const redirectUrl = redirectUrls[ 0 ];
 
 	// Create OAuth2Client
 	oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUrl);
 
 	// If there are no access tokens
-	const {accessTokens} = config;
+	const { accessTokens } = config;
 	if (!accessTokens.hasOwnProperty('access_token') || !accessTokens.hasOwnProperty('refresh_token') || !accessTokens.hasOwnProperty('scope') || !accessTokens.hasOwnProperty('token_type') || !accessTokens.hasOwnProperty('expiry_date')) {
 		tokenExpired = null;
 		checkedTokens = true;
@@ -162,13 +162,13 @@ function getCredentials(configuration) {
 
 function getNewTokens() {
 	// Init Lien server
-	let server = new Lien({host: 'localhost', port: 5000});
+	let server = new Lien({ host: 'localhost', port: 5000 });
 
 	// Open this url in your default browser
 	open(
 		oauth2Client.generateAuthUrl({
 			access_type: 'offline',
-			scope: ['https://www.googleapis.com/auth/youtube.upload'],
+			scope: [ 'https://www.googleapis.com/auth/youtube.upload' ],
 		})
 	);
 
@@ -181,7 +181,7 @@ function getNewTokens() {
 			}
 
 			// Update config
-			config = {...config, accessTokens: {...tokens}};
+			config = { ...config, accessTokens: { ...tokens } };
 
 			// Store updated config to disk, to be used in later program executions
 			storeConfig();
@@ -203,14 +203,14 @@ function storeConfig() {
 
 function monitorRootFolder() {
 	// Monitor root folder for changes
-	const {rootFolder: root} = config;
-	nsfw(root, function(events) {
+	const { rootFolder: root } = config;
+	nsfw(root, function (events) {
 		// Handle events
-		const {action} = events[0];
+		const { action } = events[ 0 ];
 
 		// Handle renaming events
 		if (action == 3) {
-			const {newDirectory, newFile} = events[0];
+			const { newDirectory, newFile } = events[ 0 ];
 			const folderBasename = path.basename(newDirectory);
 			const fileBasename = path.parse(newFile).name;
 			const fullPath = `${newDirectory}/${newFile}`;
@@ -225,10 +225,10 @@ function monitorRootFolder() {
 			}
 		}
 	})
-		.then(function(watcher) {
+		.then(function (watcher) {
 			watcher.start();
 		})
-		.then(function() {
+		.then(function () {
 			monitoringRootFolder = true;
 		});
 }
@@ -248,9 +248,9 @@ function processNextVideo() {
 	// validateVideo(fullPath);
 
 	// Set credentials for upload
-	const {accessTokens} = config;
+	const { accessTokens } = config;
 	oauth2Client.setCredentials(accessTokens);
-	google.options({auth: oauth2Client});
+	google.options({ auth: oauth2Client });
 
 	// Upload video to YouTube channel
 	activeUpload = google.youtube('v3').videos.insert(
@@ -261,7 +261,7 @@ function processNextVideo() {
 				snippet: {
 					title: `VS Code Setting: ${title}`,
 					description: "In this video I explain what this VS Code setting is and how to set it up.\n\n👇SUBSCRIBE TO ANDRÉ'S YOUTUBE CHANNEL NOW👇\nhttps://www.youtube.com/channel/UCAVNclj3DbLvdJE5CUHfumg?sub_confirmation=1\n\n★☆★ CONNECT WITH ANDRÉ ON SOCIAL MEDIA★☆★\nAndreCasal.com: https://andrecasal.com\nYouTube: https://www.youtube.com/channel/UCAVNclj3DbLvdJE5CUHfumg\nTwitter: https://twitter.com/theandrecasal\n\nI hope you've enjoyed this video!",
-					tags: ['web development', 'vs code', 'visual studio code', 'vs code settings', 'visual studio code settings', 'vs code setting', 'visual studio code setting', title],
+					tags: [ 'web development', 'vs code', 'visual studio code', 'vs code settings', 'visual studio code settings', 'vs code setting', 'visual studio code setting', title ],
 				},
 				// I don't want to spam my subscribers
 				status: {
@@ -277,17 +277,47 @@ function processNextVideo() {
 			},
 		},
 		(err, data) => {
-			activeUpload = null;
 			if (err) {
 				suspendedUpload = activeUploadPath;
 				return;
 			}
-			// Add this video to the uploadedVideos list
-			const {rootFolder: root} = config;
-			const pathAfterRoot = activeUploadPath.replace(root, '');
-			uploadedVideos.push(pathAfterRoot);
-			// Process next video
-			processNextVideo();
+			uploadThumbnail(data.id);
 		}
 	);
+}
+
+function uploadThumbnail(videoId) {
+	const thumbnailPath = `${path.dirname(activeUploadPath)}/Artboard.png`;
+	const parameters = {
+		videoId: videoId,
+		media: {
+			mimeType: 'image/png',
+			body: fs.createReadStream(thumbnailPath)
+		}
+	};
+	google.youtube('v3').thumbnails.set(parameters, insertIntoPlaylist(videoId));
+}
+
+function insertIntoPlaylist(videoId) {
+	/* const parameters = {
+		part: {
+			snippet: {
+				playlistId: 'PLVwLx67OHLu1HIbCihg3cohaM5eCarbiQ',
+				resourceId: videoId,
+			}
+		}
+	};
+	google.youtube('v3').playlistItems.insert(parameters, finishUpAndProcessNextVideo); */
+	finishUpAndProcessNextVideo();
+}
+
+function finishUpAndProcessNextVideo() {
+	// Add this video to the uploadedVideos list
+	const { rootFolder: root } = config;
+	const pathAfterRoot = activeUploadPath.replace(root, '');
+	uploadedVideos.push(pathAfterRoot);
+	// Reset active upload
+	activeUpload = null;
+	// Process next video
+	processNextVideo();
 }
